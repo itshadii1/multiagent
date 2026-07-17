@@ -4,7 +4,7 @@
 # match the app's primary look.
 [theme]
 base = "dark"
-primaryColor = "#7c5cff"
+primaryColor = "#22c55e"
 backgroundColor = "#0e1117"
 secondaryBackgroundColor = "#161a23"
 textColor = "#e6e9ef"

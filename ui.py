@@ -28,8 +28,8 @@ THEMES: dict[str, dict[str, str]] = {
         "text": "#e6e9ef",
         "muted": "#9aa4b2",
         "border": "#262b36",
-        "accent": "#7c5cff",
-        "accent_2": "#4f9dff",
+        "accent": "#22c55e",
+        "accent_2": "#10b981",
         "shadow": "0 1px 3px rgba(0,0,0,.4)",
     },
     "light": {
@@ -39,8 +39,8 @@ THEMES: dict[str, dict[str, str]] = {
         "text": "#1a1d24",
         "muted": "#5a6472",
         "border": "#e3e7ee",
-        "accent": "#5b46e5",
-        "accent_2": "#2f7ff0",
+        "accent": "#16a34a",
+        "accent_2": "#059669",
         "shadow": "0 1px 3px rgba(20,25,40,.08)",
     },
 }
