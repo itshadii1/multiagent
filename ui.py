@@ -109,10 +109,7 @@ h1, h2, h3, h4, p, span, label, li {{ color: var(--text); }}
   line-height: 1.05;
   letter-spacing: -0.02em;
   margin: 0 0 .35rem 0;
-  background: linear-gradient(90deg, var(--accent), var(--accent-2));
-  -webkit-background-clip: text;
-  background-clip: text;
-  -webkit-text-fill-color: transparent;
+  color: var(--text);
 }}
 .hero-sub {{
   color: var(--muted);
