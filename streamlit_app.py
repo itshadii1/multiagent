@@ -13,6 +13,14 @@ Keys come from the environment. Streamlit Cloud injects its secrets manager as
 env vars, which pydantic-settings already reads, so nothing here handles keys.
 """
 
+import sys
+from pathlib import Path
+
+# Streamlit Cloud installs requirements.txt but never `pip install -e .`, so
+# the src/ layout isn't importable there without this. Locally the editable
+# install wins and this line is inert.
+sys.path.insert(0, str(Path(__file__).parent / "src"))
+
 import streamlit as st
 
 from research_agents.graph import build_graph
