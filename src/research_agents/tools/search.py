@@ -24,6 +24,27 @@ def _client() -> TavilyClient:
     return TavilyClient(api_key=get_settings().tavily_api_key)
 
 
+# A tool result stays in the transcript for the rest of the agent's run, so a
+# fat snippet is paid for on every later turn, not just once. The free tier's
+# binding constraint is tokens per minute, so cap it. Tavily snippets are
+# already extracts; this only clips the long tail.
+MAX_SNIPPET_CHARS = 700
+
+
+def format_results(results: list["SearchResult"]) -> str:
+    """Render results as the text the model reads. Shared so the tool the model
+    calls and the tool tests call can't drift apart."""
+    if not results:
+        return "No results found."
+    blocks = []
+    for i, r in enumerate(results, start=1):
+        snippet = r.content[:MAX_SNIPPET_CHARS]
+        if len(r.content) > MAX_SNIPPET_CHARS:
+            snippet += "…"
+        blocks.append(f"[{i}] {r.title}\nURL: {r.url}\n{snippet}")
+    return "\n\n".join(blocks)
+
+
 def web_search(query: str, max_results: int = 5) -> list[SearchResult]:
     raw = _client().search(
         query=query,
@@ -71,10 +92,4 @@ WEB_SEARCH_SCHEMA = {
 
 def run_web_search(query: str, max_results: int = 5) -> str:
     """Tool entrypoint: returns a string the LLM can read."""
-    results = web_search(query, max_results=max_results)
-    if not results:
-        return "No results found."
-    return "\n\n".join(
-        f"[{i}] {r.title}\nURL: {r.url}\n{r.content}"
-        for i, r in enumerate(results, start=1)
-    )
+    return format_results(web_search(query, max_results=max_results))

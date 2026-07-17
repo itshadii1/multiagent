@@ -66,12 +66,15 @@ def check_citation_coverage(report: str) -> EvalResult:
     paragraph can be cited and still assert something its source never said —
     that is the critic's job, not a regex's.
     """
-    paragraphs = [
-        p
-        for p in (block.strip() for block in _body(report).split("\n\n"))
-        # Headings assert nothing, so requiring a citation on them is noise.
-        if p and not p.startswith("#") and len(p) > 80
-    ]
+    # Headings assert nothing, so they don't need citations — but strip them
+    # line-wise, not block-wise: models often write "## Heading\ntext" with no
+    # blank line between, and skipping any block starting with '#' silently
+    # dropped whole sections from scoring (observed live: 2 counted out of 6).
+    blocks = (
+        "\n".join(ln for ln in block.splitlines() if not ln.lstrip().startswith("#")).strip()
+        for block in _body(report).split("\n\n")
+    )
+    paragraphs = [p for p in blocks if len(p) > 80]
     if not paragraphs:
         return EvalResult(
             name="citation_coverage",

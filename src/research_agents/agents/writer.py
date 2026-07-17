@@ -12,6 +12,8 @@ then catches. Letting the model emit its own URL list is how citation
 hallucination gets into a report.
 """
 
+import re
+
 from research_agents.llm import complete
 from research_agents.state import Critique, Finding
 
@@ -56,11 +58,19 @@ def build_source_registry(findings: list[Finding]) -> list[str]:
 def _render_findings(findings: list[Finding], sources: list[str]) -> str:
     blocks = []
     for finding in sorted(findings, key=lambda f: f.sub_question_id):
-        numbers = ", ".join(f"[{sources.index(u) + 1}]" for u in finding.sources)
+        # Number AND url, paired. Observed live: given bare numbers, the model
+        # invented its own sequential numbering, so its in-text [6] pointed at
+        # a different entry than registry #6 — a mis-mapping citations_resolve
+        # cannot catch, since the number is in range. Showing which URL each
+        # number *is* anchors the mapping.
+        cites = "\n".join(
+            f"  [{sources.index(u) + 1}] = {u}" for u in finding.sources
+        )
         blocks.append(
             f"### Sub-question {finding.sub_question_id}: {finding.question}\n"
             f"Findings: {finding.answer}\n"
-            f"Cite these as: {numbers or '(no sources retrieved — do not cite)'}"
+            f"Cite this finding's claims with these numbers:\n"
+            f"{cites or '  (no sources retrieved — do not cite)'}"
         )
     return "\n\n".join(blocks)
 
@@ -68,6 +78,44 @@ def _render_findings(findings: list[Finding], sources: list[str]) -> str:
 def _render_references(sources: list[str]) -> str:
     lines = "\n".join(f"{i}. {url}" for i, url in enumerate(sources, start=1))
     return f"## Sources\n\n{lines}"
+
+
+# An entry line: "[3]", "3.", "- [3] https://…", "[3] https://…" — a citation
+# number, optionally followed by a URL, and nothing else.
+_REF_ENTRY = re.compile(r"^\s*[-*]?\s*\[?\d+\]?[.):]?\s*(https?://\S+)?\s*$")
+# A line that introduces such a list: "References:", "## Sources", or prose
+# like "The reference list is appended as follows:".
+_REFS_INTRO = re.compile(
+    r"(references|sources|citations|bibliography|reference list)", re.I
+)
+
+
+def _strip_model_reference_block(body: str) -> str:
+    """Drop a reference list the model wrote despite being told not to.
+
+    Prompting against this failed twice, in two shapes, both observed live:
+    a `References:` heading over empty stubs (`[1]`, `[2]`, …), and a prose
+    intro ("The reference list is appended as follows:") over entries with
+    URLs — the second being actively dangerous, because the model renumbers
+    freely and its list contradicts the canonical one we append.
+
+    So: enforce in code. Take the trailing run of entry-shaped lines (two or
+    more, so a report legitimately ending in a bracketed number survives),
+    plus the line introducing them if it reads like one.
+    """
+    lines = body.rstrip().split("\n")
+
+    i = len(lines)
+    while i > 0 and (not lines[i - 1].strip() or _REF_ENTRY.match(lines[i - 1])):
+        i -= 1
+    entry_count = sum(1 for ln in lines[i:] if ln.strip())
+    if entry_count < 2:
+        return body.rstrip()
+
+    intro = lines[i - 1].strip() if i > 0 else ""
+    if _REFS_INTRO.search(intro) and (intro.endswith(":") or intro.startswith("#")):
+        i -= 1
+    return "\n".join(lines[:i]).rstrip()
 
 
 def write_report(
@@ -97,4 +145,5 @@ def write_report(
             {"role": "user", "content": user_content},
         ]
     )
-    return f"{body.strip()}\n\n{_render_references(sources)}"
+    body = _strip_model_reference_block(body.strip())
+    return f"{body}\n\n{_render_references(sources)}"

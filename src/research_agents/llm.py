@@ -15,7 +15,7 @@ import time
 from functools import lru_cache
 from typing import Any, Callable, TypeVar
 
-from openai import OpenAI, RateLimitError
+from openai import BadRequestError, OpenAI, RateLimitError
 from pydantic import BaseModel, ValidationError
 
 from research_agents.config import get_settings
@@ -29,17 +29,34 @@ def get_client() -> OpenAI:
     return OpenAI(api_key=settings.groq_api_key, base_url=settings.base_url)
 
 
-def _complete(**kwargs: Any) -> Any:
-    """One chat completion, retrying through free-tier rate limits.
+def _is_malformed_tool_call(exc: BadRequestError) -> bool:
+    """Groq's 400 for "the model emitted a tool call I can't parse".
 
-    Groq's free tier is capped per minute and parallel researchers will hit
-    it. Exponential backoff with jitter so retries don't re-collide.
+    Distinguished from every other 400 (a genuinely bad request, which retrying
+    would only repeat) by Groq's `tool_use_failed` code.
+    """
+    return "tool_use_failed" in str(exc)
+
+
+def _complete(**kwargs: Any) -> Any:
+    """One chat completion, retrying through the two failures the free tier throws.
+
+    - **rate limits.** Groq's free tier is capped per minute and parallel
+      researchers will hit it.
+    - **malformed tool calls.** The model sometimes emits a tool call Groq
+      can't parse. Generation is stochastic, so the same request usually
+      succeeds on a retry — worth doing because one bad call would otherwise
+      kill a multi-minute run near the end of it.
+
+    Exponential backoff with jitter so parallel retries don't re-collide.
     """
     settings = get_settings()
     for attempt in range(settings.max_rate_limit_retries):
         try:
             return get_client().chat.completions.create(**kwargs)
-        except RateLimitError:
+        except (RateLimitError, BadRequestError) as exc:
+            if isinstance(exc, BadRequestError) and not _is_malformed_tool_call(exc):
+                raise  # a real bad request; retrying just repeats it
             if attempt == settings.max_rate_limit_retries - 1:
                 raise
             time.sleep(2**attempt + random.random())

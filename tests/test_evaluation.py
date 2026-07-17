@@ -62,3 +62,12 @@ def test_citation_coverage_flags_uncited_paragraph():
 
     assert not result.passed
     assert result.score == 0.5
+
+
+def test_heading_glued_to_paragraph_is_still_scored():
+    # Models often write "## Heading\ntext" with no blank line; the paragraph
+    # must still count. Observed live: whole sections silently skipped.
+    report = f"# Title\n\n## Section A\n{PARA} [1]\n\n## Section B\n{PARA}\n\n## Sources\n\n1. x"
+    result = check_citation_coverage(report)
+
+    assert result.score == 0.5  # both counted, one cited — not 1/1

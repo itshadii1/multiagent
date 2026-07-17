@@ -57,12 +57,12 @@ the key differentiator from your tutor project: that one **retrieves and answers
 
 ## milestones
 
-- **m1:** single agent + one tool (search). it answers one question using live search. (validates tool calling) — **code written, not yet run against live APIs**
-- **m2:** planner splits a query into sub-questions; researchers answer each in parallel. (validates orchestration) — **built; wiring verified by tests, agents not yet run live**
-- **m3:** writer assembles a report with citations. (end-to-end happy path) — **built; pipeline driven end to end with agents stubbed, not yet run live**
-- **m4:** critic agent reviews and triggers a retry loop when the report is weak. (the differentiator) — **built; loop + termination verified by tests, not yet run live**
-- **m5:** add evaluation + a simple UI (streamlit or a basic react front end — reuse your react skill). (portfolio polish) — **built; rule checks tested, app boots, not yet run live**
-- **m6:** deploy it, so a recruiter opens a link instead of cloning a repo. — **not started; needs keys + a github push**
+- **m1:** single agent + one tool (search). it answers one question using live search. (validates tool calling) — **done, verified live**
+- **m2:** planner splits a query into sub-questions; researchers answer each in parallel. (validates orchestration) — **done, verified live**
+- **m3:** writer assembles a report with citations. (end-to-end happy path) — **done, verified live; citation numbering hardened after real-model failures**
+- **m4:** critic agent reviews and triggers a retry loop when the report is weak. (the differentiator) — **done, verified live (critic rejected+approved across runs)**
+- **m5:** add evaluation + a simple UI (streamlit or a basic react front end — reuse your react skill). (portfolio polish) — **done; evals run on every live report, app boots**
+- **m6:** deploy it, so a recruiter opens a link instead of cloning a repo. — **not started; needs a github push + streamlit cloud connect**
 
 ## constraint: zero budget
 
@@ -204,8 +204,55 @@ decisions:
 still unvalidated against a real model — expect prompt tuning, especially the
 critic (likely too harsh at first: watch for it looping to the cap every run).
 
-next: m6 — deploy to streamlit community cloud. also: fill the resume bullet's
-"reduced unsupported claims" number in with a real before/after from the evals.
+### first live runs (2026-07-17)
+
+keys in. **the system now runs end to end against live APIs** — three full
+reports generated, final one scoring 100%/100%/75% on the evals. every one of
+the failures below was invisible to the mocked tests and surfaced only live.
+each is now also a regression test (26 passing).
+
+what broke, in order:
+
+1. **llama-3.3-70b can't reliably call tools.** measured 7/8 requests failing
+   with groq's `tool_use_failed` — it emits `<function=web_search={...}` instead
+   of valid json. the plan's model choice was simply wrong for a tool-calling
+   system.
+2. **the free tier's real cap is tokens/min, not requests/min.** the plan
+   guessed RPM; RPM is a roomy 1000. TPM is the binding constraint, and a
+   researcher turn carrying search results (~9k tokens) exceeds some models'
+   *entire* budget. measured: scout 30k, llama-3.3-70b 12k, gpt-oss-120b 8k,
+   qwen 6k. → **switched to llama-4-scout**, the only free model passing both
+   bars (8/8 tool calls AND 30k TPM). also: snippets truncated at 700 chars,
+   max_results capped at 5 — a tool result is re-read every later turn, so fat
+   snippets are paid for repeatedly.
+3. **`tool_use_failed` is retryable.** generation is stochastic; the same
+   request usually succeeds on retry. added to `_complete`'s backoff, keyed on
+   groq's error code so genuine 400s still raise.
+4. **the writer appends its own reference list no matter what the prompt says.**
+   twice, in two shapes: empty stubs under `References:`, then — worse —
+   entries *with urls* under a prose intro, using its own numbering that
+   contradicted the canonical list. prompting against it failed twice, so it's
+   now stripped in code (`_strip_model_reference_block`), which is consistent
+   with the design: we own the reference list, not the model.
+5. **the model renumbers citations if given half a chance.** its in-text [6]
+   pointed at a different url than registry #6 — in range, so
+   `citations_resolve` passed. fix: the findings block now shows `[n] = url`
+   pairs instead of bare numbers, anchoring the mapping. spot-checked live:
+   [14] now cites the page that actually makes the claim.
+6. **`citation_coverage` was silently skipping most of the report.** models
+   write `## heading\ntext` with no blank line, so whole sections started with
+   `#` and were excluded (scored 2 paragraphs of a 6-section report). now
+   strips heading *lines*, not blocks.
+
+the meta-lesson, worth saying in an interview: mocked tests proved the
+orchestration, and every single live failure was in the seam the mocks
+replaced — the model's actual behavior. both layers of testing were necessary;
+neither was sufficient.
+
+next: m6 — deploy to streamlit community cloud (push to github, connect repo,
+paste the two keys into streamlit's secrets manager). also: fill the resume
+bullet's "reduced unsupported claims" number with a real before/after from the
+evals, and consider making the critic surface the judge's per-question misses.
 
 ## what to avoid
 

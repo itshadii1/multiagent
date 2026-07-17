@@ -9,7 +9,7 @@ retrieved, and the critic later needs ground truth to check claims against.
 
 from research_agents.llm import run_tool_loop
 from research_agents.state import Finding, SubQuestion
-from research_agents.tools.search import WEB_SEARCH_SCHEMA, web_search
+from research_agents.tools.search import WEB_SEARCH_SCHEMA, format_results, web_search
 
 SYSTEM_PROMPT = """You are a research agent. Answer the user's question using the web_search tool.
 
@@ -27,16 +27,13 @@ def _search_recording_sources(urls: list[str]):
     """web_search, wrapped to record every URL it hands back."""
 
     def tool(query: str, max_results: int = 5) -> str:
-        results = web_search(query, max_results=max_results)
-        if not results:
-            return "No results found."
+        # Capped: the model asking for 10 results is the model spending the
+        # token budget every subsequent turn re-reads.
+        results = web_search(query, max_results=min(max_results, 5))
         for r in results:
             if r.url not in urls:
                 urls.append(r.url)
-        return "\n\n".join(
-            f"[{i}] {r.title}\nURL: {r.url}\n{r.content}"
-            for i, r in enumerate(results, start=1)
-        )
+        return format_results(results)
 
     return tool
 
