@@ -254,6 +254,60 @@ paste the two keys into streamlit's secrets manager). also: fill the resume
 bullet's "reduced unsupported claims" number with a real before/after from the
 evals, and consider making the critic surface the judge's per-question misses.
 
+### m7 — UI redesign + user theme toggle (2026-07-18)
+
+the pipeline is done and honest; the UI it ships behind is the default streamlit
+skin. a recruiter judges the link in the first three seconds, and that skin does
+the four-agent architecture no favours. this milestone is **presentation only** —
+no agent, graph, or eval logic changes. the pipeline stays exactly as verified.
+
+**guardrail (do this first): make the existing UI concrete before adding to it.**
+the current `streamlit_app.py` has thin spots that only bite on a real run:
+- an empty query slips past `.strip()` on the button but the run still starts on
+  whitespace-only input in some paths — gate it once, cleanly.
+- the researcher branch reads `state["findings"][-1]` assuming the streamed
+  update carried exactly one finding; hold that assumption explicitly so a
+  future batched update can't index past the end.
+- the results block assumes `evaluation`, `findings`, and `report` are all
+  present together; a run that fails mid-writer leaves a partial state. render
+  each section behind its own presence check, not one shared one.
+lock these down, keep all 26 tests green, then restyle.
+
+**the design work:**
+1. **drop the magnifying glass** from the title — the wordmark carries it.
+2. **light + dark mode, user-toggleable at runtime.** default dark (matches the
+   current look). streamlit's native theme is fixed at load, so the toggle
+   injects a CSS variable set per mode and restyles the app shell + widgets.
+   state lives in `st.session_state`; the toggle rerun repaints.
+3. **a hero header** with a gradient wordmark and a one-line pitch.
+4. **a static agent-pipeline strip** (planner → researchers → writer ⇄ critic →
+   evaluator) shown *before* a run, so the architecture reads even on an idle
+   page — the thing worth showing shouldn't require pressing the button.
+5. **clickable example queries** that fill the input (lower the "what do i type"
+   barrier for a recruiter who won't invent a query).
+6. **restyled results** — quality checks as proper cards, the report in a framed
+   surface, download + raw-findings kept.
+
+**where it lives:** styling isolated in `ui.py` at repo root (CSS + small render
+helpers + the example list), so `streamlit_app.py` stays a thin caller of
+`build_graph()` — same discipline as the CLI. a `.streamlit/config.toml` sets the
+base theme so the first paint (before any CSS injects) already looks right.
+
+**improvement ideas surfaced while doing this (not all in scope for m7):**
+- **PDF export** of the report (recruiters skim, don't clone) — pair with the
+  existing `.md` download.
+- **per-agent timing** in the progress stream — turns the run into a visible
+  benchmark and backs a resume latency number.
+- **a model picker in the UI** — the config already makes the LLM a one-knob
+  swap; surfacing it demos the provider-agnostic design live.
+- **fill the "reduced unsupported claims" number** by running the evals with the
+  critic loop on vs off and recording the delta (still the strongest resume line).
+these are logged here so the next session picks the highest-value one, not
+whatever's top of mind.
+
+**scope discipline:** m7 ships items 1-6 above. the four improvement ideas are
+parked, not started — presentation first, features second.
+
 ## what to avoid
 
 - don't over-engineer agent count. 3-4 agents is enough; more looks unfocused.

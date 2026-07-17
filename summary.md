@@ -7,6 +7,33 @@ and produces a cited report — automating a manual knowledge-work task end to e
 
 ---
 
+## the dead-simple version (read this first)
+
+**what it does:** you type one question. you get back a written report with real
+sources, like a mini research analyst did it for you.
+
+**the everyday example:** imagine you ask an intern, "write me a two-page brief
+on the EV battery market in India." a good intern doesn't just start typing. they
+break the question into parts, google each part, write a draft, re-read it to
+catch weak spots, and hand you a clean version with links. this app is four AI
+"interns" doing exactly that, automatically, in about two minutes.
+
+**why it's useful:** researching and writing a sourced report is slow, boring
+knowledge work that people do by hand every day — consultants, analysts,
+students. this automates the whole loop, not just one step.
+
+**why it's different from a chatbot:** ask ChatGPT the same question and it
+answers *once*, instantly, and sometimes makes up its sources. this system
+double-checks itself — one agent's only job is to catch weak or unsupported
+claims and send the draft back to be fixed. that "check your own work" loop is
+the whole point.
+
+**the one-sentence resume/interview answer:** "it's a team of AI agents that
+plan, search the web, write, and critique each other to produce a cited research
+report from a single question — so it automates research writing end to end."
+
+---
+
 ## why i built it (the intuition)
 
 start with the thing a person actually does. someone asks you "how big is the EV
@@ -193,3 +220,64 @@ answering once and hoping.
 - built a multi-agent research automation system (planner-researcher-critic-writer)
   in langgraph with tool-calling web search and a self-correction loop, plus
   per-agent evaluation to measure report quality.
+
+---
+
+## m7 — UI redesign + light/dark theme (2026-07-18)
+
+the pipeline was already done and honest, but it shipped behind the default
+streamlit skin — and a recruiter judges a link in the first three seconds. this
+pass is **presentation only**: not a single agent, graph, or eval line changed,
+and all 26 tests still pass. what changed is how the same run looks and how solid
+the UI is when a run goes sideways.
+
+**made the existing UI concrete before adding to it.** three thin spots in
+`streamlit_app.py` only bit on a real run, so they were closed first:
+- the run now gates on a stripped query in one place, so whitespace-only input
+  can't start a pointless (paid) run.
+- the researcher progress line used to read `findings[-1]` off the accumulated
+  list, assuming each streamed update carried exactly one finding. it now reports
+  the findings *that event actually delivered*, so a batched update can't index
+  past the end or double-count.
+- the results block assumed report, evals, and findings all arrive together. a
+  run that dies mid-writer breaks that assumption, so each section now renders
+  behind its own presence check instead of one shared one.
+
+**the design work (what a visitor now sees):**
+- **dropped the magnifying-glass emoji** from the title; the wordmark carries it.
+- **light + dark mode, toggled live in the sidebar.** streamlit fixes its native
+  theme at page load, so a runtime switch can't go through that path — the toggle
+  instead picks a token set and injects it as CSS variables, restyling the app
+  shell *and* the sidebar (whose fill streamlit paints with high specificity, so
+  it needed a targeted override). default is dark, matching the original look.
+- **a gradient hero wordmark** and one-line pitch.
+- **a static agent-pipeline strip** (planner → researchers → writer ⇄ critic →
+  evaluator, with the critic's revise-loop marked) shown *before* a run — so the
+  four-agent architecture reads even on an idle page, which is the whole thing
+  worth showing.
+- **clickable example queries** that fill the input in one click, lowering the
+  "what do I even type" barrier for a visitor who won't invent a query.
+- **restyled results** — quality checks as framed metric cards, the report in a
+  bordered surface; the `.md` download and raw-findings expander are kept.
+
+**where it lives:** all styling is isolated in `ui.py` at the repo root (theme
+tokens, the CSS builder, small HTML render helpers, the example list), so
+`streamlit_app.py` stays a thin caller of `build_graph()` — same discipline as
+the CLI. a `.streamlit/config.toml` sets a dark base theme so the very first
+paint, before any CSS injects, already looks intentional (no light-mode flash).
+
+verified live in a browser: both themes repaint fully (sidebar included), the
+theme toggle round-trips, and the example chips populate the query box and enable
+the run button.
+
+**improvement ideas parked for next time (deliberately not built here, to keep
+this pass presentation-only):**
+- **PDF export** of the report alongside the existing `.md` download — recruiters
+  skim, they don't clone.
+- **per-agent timing** surfaced in the progress stream — turns the run into a
+  visible benchmark and backs a latency number on the resume.
+- **a model picker in the UI** — the config already makes the LLM a one-knob
+  swap, so surfacing it would demo the provider-agnostic design live.
+- **the "reduced unsupported claims" number** — run the evals with the critic
+  loop on vs off and record the delta; still the strongest resume line, still
+  unfilled.
